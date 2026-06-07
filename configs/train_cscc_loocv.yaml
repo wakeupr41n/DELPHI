@@ -1,0 +1,19 @@
+# DELPHI training config — cSCC LOOCV (Fig 2)
+dataset: cscc756
+mode: loocv
+patient: P2
+seed: 42
+save_dir: checkpoints/npd_cscc756_final/loocv_P2_s42
+
+model:
+  hidden_dim: 384
+  gh: 6
+  gw: 6
+  knn_k: 8
+  n_swin_blocks: 4
+
+training:
+  epochs: 22
+  lr: 1.0e-4
+  lambda_pcc: 3.0
+  batch_size: 1

@@ -1,0 +1,17 @@
+# DELPHI training config — HER2ST FULL (Fig 3 base model)
+dataset: her2st
+mode: full
+seed: 42
+save_dir: checkpoints/npd_bll_h/full_s42_e22
+
+model:
+  hidden_dim: 384
+  gh: 12
+  gw: 12
+  knn_k: 8
+  n_swin_blocks: 4
+
+training:
+  epochs: 22
+  lr: 1.0e-4
+  batch_size: 1

@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "If you use DELPHI in your research, please cite the following paper."
+title: "DELPHI: Trustworthy Spatial Molecular Profiling from Histopathology Images"
+authors: []
+repository-code: "https://github.com/wakeupr41n/DELPHI"
+url: "https://github.com/wakeupr41n/DELPHI"
+license: MIT
+type: software

@@ -1,0 +1,39 @@
+# System
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+.claude/
+_external/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+
+# Sensitive
+.env
+*.hf_token
+
+# Outputs
+checkpoints/
+results/
+figures/
+logs/
+output/
+
+# Data — only allow README
+data/*
+!data/README.md
+
+# Archives
+scripts/archive/
+src/archive/
+templates/
+benchmarks/
+
+# Allow README figure
+!fig1.png

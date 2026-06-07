@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "delphi"
+version = "3.1.0"
+description = "DELPHI: Dual-scale calibrated confidence enables trustworthy spatial gene expression prediction from histology"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+    { name = "DELPHI Authors" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+keywords = [
+    "spatial-transcriptomics",
+    "histology",
+    "deep-learning",
+    "uncertainty-quantification",
+    "gene-expression-prediction",
+    "computational-pathology",
+]
+
+[project.urls]
+Homepage = "https://github.com/wakeupr41n/DELPHI"
+Repository = "https://github.com/wakeupr41n/DELPHI"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.ruff]
+# Linting configuration (Ruff: fast Python linter + formatter)
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]  # line too long — handled by formatter
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
