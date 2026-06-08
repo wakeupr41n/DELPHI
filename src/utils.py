@@ -38,8 +38,8 @@ def compute_slide_pcc(preds: np.ndarray, targets: np.ndarray) -> np.ndarray:
     targets_m = targets - targets.mean(axis=0, keepdims=True)
 
     cov = (preds_m * targets_m).sum(axis=0)
-    preds_var = (preds_m ** 2).sum(axis=0)
-    targets_var = (targets_m ** 2).sum(axis=0)
+    preds_var = (preds_m**2).sum(axis=0)
+    targets_var = (targets_m**2).sum(axis=0)
 
     denom = np.sqrt(preds_var * targets_var)
 
@@ -64,8 +64,7 @@ class SinusoidalPE(nn.Module):
         super().__init__()
         self.d_model = d_model
         div_term = torch.exp(
-            torch.arange(0, d_model // 2, 2).float()
-            * (-_math.log(10000.0) / (d_model // 2))
+            torch.arange(0, d_model // 2, 2).float() * (-_math.log(10000.0) / (d_model // 2))
         )
         self.register_buffer("div_term", div_term)
 
@@ -90,7 +89,8 @@ class HybridPE(nn.Module):
         super().__init__()
         self.sin = SinusoidalPE(d_model)
         self.correction = nn.Sequential(
-            nn.Linear(2, d_model // 4), nn.GELU(),
+            nn.Linear(2, d_model // 4),
+            nn.GELU(),
             nn.Linear(d_model // 4, d_model),
         )
         self.scale = correction_scale
@@ -102,8 +102,9 @@ class HybridPE(nn.Module):
         return self.sin(pos) + self.scale * self.correction(pos_n)
 
 
-def cosine_with_warmup(step: int, total_steps: int, warmup_steps: int,
-                       min_ratio: float = 0.05) -> float:
+def cosine_with_warmup(
+    step: int, total_steps: int, warmup_steps: int, min_ratio: float = 0.05
+) -> float:
     """LR multiplier: linear warmup then cosine decay to min_ratio * lr_max."""
     if step < warmup_steps:
         return float(step) / max(1, warmup_steps)
@@ -120,7 +121,7 @@ def get_logger(name: str, log_dir: str = None) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
 
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
     if not logger.handlers:
         # Stream Handler
@@ -131,7 +132,7 @@ def get_logger(name: str, log_dir: str = None) -> logging.Logger:
         # File Handler (if dir provided)
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
-            fh = logging.FileHandler(os.path.join(log_dir, 'run.log'))
+            fh = logging.FileHandler(os.path.join(log_dir, "run.log"))
             fh.setFormatter(formatter)
             logger.addHandler(fh)
 

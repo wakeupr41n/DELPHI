@@ -19,6 +19,7 @@ Head (DDPN-inspired Hurdle-Gaussian, see src/loss.py):
 Reuses HybridPE from src/model_v6.py via import. No spectral norm, no sigma-K/V
 gating, no CASD: those are deliberately removed.
 """
+
 from __future__ import annotations
 
 import math
@@ -29,9 +30,18 @@ import torch.nn.functional as F  # noqa: N812
 
 from src.utils import HybridPE
 
-__all__ = ['DELPHI', 'GridEncoder', 'WindowSelfAttn', 'SwinBlock',
-           'KNNDecoder', 'BayesianLinear', 'BLLMuHead',
-           '_DetMuHead', '_HomoscedasticHead', '_ZeroPiHead']
+__all__ = [
+    "DELPHI",
+    "GridEncoder",
+    "WindowSelfAttn",
+    "SwinBlock",
+    "KNNDecoder",
+    "BayesianLinear",
+    "BLLMuHead",
+    "_DetMuHead",
+    "_HomoscedasticHead",
+    "_ZeroPiHead",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -47,10 +57,10 @@ def _bin_pos(pos: torch.Tensor, gh: int, gw: int) -> torch.Tensor:
     """
     pmin = pos.amin(dim=0)
     pmax = pos.amax(dim=0)
-    pn = (pos - pmin) / (pmax - pmin + 1e-6)            # [N, 2] in [0, 1]
+    pn = (pos - pmin) / (pmax - pmin + 1e-6)  # [N, 2] in [0, 1]
     col = (pn[:, 0] * gw).clamp(0, gw - 1).long()
     row = (pn[:, 1] * gh).clamp(0, gh - 1).long()
-    return row * gw + col                                 # [N]
+    return row * gw + col  # [N]
 
 
 class GridEncoder(nn.Module):
@@ -66,7 +76,9 @@ class GridEncoder(nn.Module):
         nn.init.normal_(self.empty_token, std=0.02)
 
     def forward(
-        self, h: torch.Tensor, pos: torch.Tensor,
+        self,
+        h: torch.Tensor,
+        pos: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """h: [N, D]. pos: [N, 2].
 
@@ -76,7 +88,7 @@ class GridEncoder(nn.Module):
           cell_idx    : [N]             which cell each spot landed in
         """
         N, D = h.shape  # noqa: N806
-        cell_idx = _bin_pos(pos, self.gh, self.gw)         # [N]
+        cell_idx = _bin_pos(pos, self.gh, self.gw)  # [N]
         sums = h.new_zeros(self.n_cells, D)
         counts = h.new_zeros(self.n_cells)
         sums.index_add_(0, cell_idx, h)
@@ -85,7 +97,7 @@ class GridEncoder(nn.Module):
         means = sums / counts.clamp(min=1.0).unsqueeze(-1)
         empty_token = self.empty_token.expand(self.n_cells, D)
         cell_tokens = torch.where(nonempty.unsqueeze(-1), means, empty_token)
-        empty_mask = ~nonempty                               # True for empty
+        empty_mask = ~nonempty  # True for empty
         return cell_tokens, empty_mask, cell_idx
 
 
@@ -102,8 +114,15 @@ class WindowSelfAttn(nn.Module):
     then unshift after attention. This matches Swin v1 (Liu et al., 2021).
     """
 
-    def __init__(self, d_model: int, n_heads: int = 4, gh: int = 6, gw: int = 6,
-                 window: int = 3, dropout: float = 0.1):
+    def __init__(
+        self,
+        d_model: int,
+        n_heads: int = 4,
+        gh: int = 6,
+        gw: int = 6,
+        window: int = 3,
+        dropout: float = 0.1,
+    ):
         super().__init__()
         self.gh, self.gw = gh, gw
         self.window = window
@@ -122,7 +141,7 @@ class WindowSelfAttn(nn.Module):
         x = x.view(self.gh, self.gw, D)
         nh, nw = self.gh // self.window, self.gw // self.window
         x = x.view(nh, self.window, nw, self.window, D)
-        x = x.permute(0, 2, 1, 3, 4).contiguous()         # [nh, nw, w, w, D]
+        x = x.permute(0, 2, 1, 3, 4).contiguous()  # [nh, nw, w, w, D]
         return x.view(nh * nw, self.window * self.window, D)
 
     def _unwindows(self, x: torch.Tensor) -> torch.Tensor:
@@ -134,7 +153,10 @@ class WindowSelfAttn(nn.Module):
         return x.view(self.gh * self.gw, D)
 
     def forward(
-        self, x: torch.Tensor, empty_mask: torch.Tensor, shift: int = 0,
+        self,
+        x: torch.Tensor,
+        empty_mask: torch.Tensor,
+        shift: int = 0,
     ) -> torch.Tensor:
         """x: [gh*gw, D]. empty_mask: [gh*gw] True where empty."""
         D = x.shape[-1]  # noqa: N806
@@ -154,13 +176,13 @@ class WindowSelfAttn(nn.Module):
 
         # window
         Wn = self.window * self.window  # noqa: N806
-        q_w = self._windows(q)            # [n_w, Wn, D]
+        q_w = self._windows(q)  # [n_w, Wn, D]
         k_w = self._windows(k)
         v_w = self._windows(v)
         m_w = empty_mask.view(self.gh, self.gw)
         nh, nw = self.gh // self.window, self.gw // self.window
         m_w = m_w.view(nh, self.window, nw, self.window).permute(0, 2, 1, 3).contiguous()
-        m_w = m_w.view(nh * nw, Wn)        # [n_w, Wn], True = empty (mask)
+        m_w = m_w.view(nh * nw, Wn)  # [n_w, Wn], True = empty (mask)
 
         n_w = q_w.shape[0]
         # multi-head reshape
@@ -180,9 +202,9 @@ class WindowSelfAttn(nn.Module):
         # Replace NaN rows with uniform 0 contribution.
         attn = torch.nan_to_num(attn, nan=0.0)
         attn = self.attn_drop(attn)
-        out = torch.matmul(attn, v_w)                                  # [n_w,H,Wn,d_h]
+        out = torch.matmul(attn, v_w)  # [n_w,H,Wn,d_h]
         out = out.transpose(1, 2).contiguous().view(n_w, Wn, D)
-        out = self._unwindows(out)                                     # [gh*gw, D]
+        out = self._unwindows(out)  # [gh*gw, D]
         out = self.W_o(out)
 
         # un-shift
@@ -196,17 +218,25 @@ class WindowSelfAttn(nn.Module):
 class SwinBlock(nn.Module):
     """Pre-norm Swin block: WindowSelfAttn + FFN."""
 
-    def __init__(self, d_model: int, n_heads: int, gh: int, gw: int,
-                 dim_ff: int, dropout: float = 0.1, shift: int = 0):
+    def __init__(
+        self,
+        d_model: int,
+        n_heads: int,
+        gh: int,
+        gw: int,
+        dim_ff: int,
+        dropout: float = 0.1,
+        shift: int = 0,
+    ):
         super().__init__()
         self.shift = shift
         self.norm1 = nn.LayerNorm(d_model)
-        self.attn = WindowSelfAttn(d_model, n_heads, gh, gw, window=3,
-                                    dropout=dropout)
+        self.attn = WindowSelfAttn(d_model, n_heads, gh, gw, window=3, dropout=dropout)
         self.drop1 = nn.Dropout(dropout)
         self.norm2 = nn.LayerNorm(d_model)
         self.ff = nn.Sequential(
-            nn.Linear(d_model, dim_ff), nn.GELU(),
+            nn.Linear(d_model, dim_ff),
+            nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(dim_ff, d_model),
         )
@@ -230,8 +260,15 @@ class KNNDecoder(nn.Module):
     centre ((k+0.5)/gw, (r+0.5)/gh) in normalised coords.
     """
 
-    def __init__(self, d_model: int, n_heads: int = 4, K: int = 4,  # noqa: N803
-                 gh: int = 6, gw: int = 6, dropout: float = 0.1):
+    def __init__(
+        self,
+        d_model: int,
+        n_heads: int = 4,
+        K: int = 4,  # noqa: N803
+        gh: int = 6,
+        gw: int = 6,
+        dropout: float = 0.1,
+    ):
         super().__init__()
         self.K = K
         self.gh = gh
@@ -253,7 +290,10 @@ class KNNDecoder(nn.Module):
         self.register_buffer("centres", centres)
 
     def forward(
-        self, h_q: torch.Tensor, pos: torch.Tensor, cell_tokens: torch.Tensor,
+        self,
+        h_q: torch.Tensor,
+        pos: torch.Tensor,
+        cell_tokens: torch.Tensor,
     ) -> torch.Tensor:
         """h_q: [N, D] query features.
         pos: [N, 2] absolute spot coords (for norm).
@@ -264,21 +304,21 @@ class KNNDecoder(nn.Module):
         # normalised query positions
         pmin = pos.amin(dim=0)
         pmax = pos.amax(dim=0)
-        pn = (pos - pmin) / (pmax - pmin + 1e-6)             # [N, 2]
+        pn = (pos - pmin) / (pmax - pmin + 1e-6)  # [N, 2]
         # distance to each cell centre
         d2 = ((pn.unsqueeze(1) - self.centres.unsqueeze(0)) ** 2).sum(dim=-1)  # [N, n_cells]
-        knn_idx = d2.topk(self.K, dim=-1, largest=False).indices               # [N, K]
+        knn_idx = d2.topk(self.K, dim=-1, largest=False).indices  # [N, K]
 
         # gather K cell tokens per query
-        kv = cell_tokens[knn_idx]                                              # [N, K, D]
-        q = self.W_q(h_q).view(N, self.n_heads, self.d_h)                       # [N, H, d_h]
+        kv = cell_tokens[knn_idx]  # [N, K, D]
+        q = self.W_q(h_q).view(N, self.n_heads, self.d_h)  # [N, H, d_h]
         k = self.W_k(kv).view(N, self.K, self.n_heads, self.d_h).transpose(1, 2)  # [N, H, K, d_h]
         v = self.W_v(kv).view(N, self.K, self.n_heads, self.d_h).transpose(1, 2)
 
-        scores = (q.unsqueeze(2) * k).sum(dim=-1) / math.sqrt(self.d_h)        # [N, H, K]
+        scores = (q.unsqueeze(2) * k).sum(dim=-1) / math.sqrt(self.d_h)  # [N, H, K]
         attn = F.softmax(scores, dim=-1)
         attn = self.attn_drop(attn)
-        out = (attn.unsqueeze(-1) * v).sum(dim=2)                              # [N, H, d_h]
+        out = (attn.unsqueeze(-1) * v).sum(dim=2)  # [N, H, d_h]
         out = out.contiguous().view(N, D)
         return self.W_o(out)
 
@@ -306,8 +346,13 @@ class BayesianLinear(nn.Module):
     the last layer's weight posterior.
     """
 
-    def __init__(self, in_features: int, out_features: int,
-                 prior_std: float = 1.0, init_log_var: float = -6.0):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        prior_std: float = 1.0,
+        init_log_var: float = -6.0,
+    ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
@@ -328,25 +373,27 @@ class BayesianLinear(nn.Module):
         """
         out_mean = F.linear(h, self.M, self.M_b)
         var_W = self.log_S.exp()  # noqa: N806  [out, in]
-        var_b = self.log_S_b.exp()                              # [out]
-        h_sq = h ** 2                                            # [N, in]
-        out_var = F.linear(h_sq, var_W) + var_b                  # [N, out]
+        var_b = self.log_S_b.exp()  # [out]
+        h_sq = h**2  # [N, in]
+        out_var = F.linear(h_sq, var_W) + var_b  # [N, out]
         return out_mean, out_var
 
     def kl_divergence(self) -> torch.Tensor:
         """KL( q(W,b) || N(0, prior_std^2 * I) ), summed over all parameters."""
-        prior_var = self.prior_std ** 2
+        prior_var = self.prior_std**2
         log_prior_var = math.log(prior_var)
         var_q = self.log_S.exp()
-        kl_W = 0.5 * (  # noqa: N806
-            (self.M ** 2) / prior_var + var_q / prior_var
-            - 1.0 - self.log_S + log_prior_var
-        ).sum()
+        kl_W = (  # noqa: N806
+            0.5
+            * ((self.M**2) / prior_var + var_q / prior_var - 1.0 - self.log_S + log_prior_var).sum()
+        )
         var_qb = self.log_S_b.exp()
-        kl_b = 0.5 * (
-            (self.M_b ** 2) / prior_var + var_qb / prior_var
-            - 1.0 - self.log_S_b + log_prior_var
-        ).sum()
+        kl_b = (
+            0.5
+            * (
+                (self.M_b**2) / prior_var + var_qb / prior_var - 1.0 - self.log_S_b + log_prior_var
+            ).sum()
+        )
         return kl_W + kl_b
 
 
@@ -359,11 +406,14 @@ class BLLMuHead(nn.Module):
                                      ≈ Var(softplus(z)) for small Var(z).
     """
 
-    def __init__(self, hidden_dim: int, num_genes: int,
-                 dropout: float = 0.1, prior_std: float = 1.0):
+    def __init__(
+        self, hidden_dim: int, num_genes: int, dropout: float = 0.1, prior_std: float = 1.0
+    ):
         super().__init__()
         self.body = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2), nn.GELU(), nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
         )
         self.bll = BayesianLinear(hidden_dim // 2, num_genes, prior_std=prior_std)
 
@@ -384,8 +434,7 @@ class BLLMuHead(nn.Module):
 # ---------------------------------------------------------------------------
 
 
-def _make_head(d_model: int, num_genes: int, activation: str,
-               dropout: float = 0.1) -> nn.Module:
+def _make_head(d_model: int, num_genes: int, activation: str, dropout: float = 0.1) -> nn.Module:
     if activation == "softplus":
         out = nn.Softplus()
     elif activation == "sigmoid":
@@ -395,7 +444,9 @@ def _make_head(d_model: int, num_genes: int, activation: str,
     else:
         raise ValueError(activation)
     return nn.Sequential(
-        nn.Linear(d_model, d_model // 2), nn.GELU(), nn.Dropout(dropout),
+        nn.Linear(d_model, d_model // 2),
+        nn.GELU(),
+        nn.Dropout(dropout),
         nn.Linear(d_model // 2, num_genes),
         out,
     )
@@ -415,7 +466,9 @@ class _DetMuHead(nn.Module):
     def __init__(self, hidden_dim: int, num_genes: int, dropout: float = 0.1):
         super().__init__()
         self.body = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2), nn.GELU(), nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
         )
         self.out = nn.Linear(hidden_dim // 2, num_genes)
 
@@ -478,7 +531,8 @@ class DELPHI(nn.Module):
         # 1. Per-spot encoder: project + PE
         self.projector = nn.Sequential(
             nn.Linear(uni2h_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim), nn.GELU(),
+            nn.LayerNorm(hidden_dim),
+            nn.GELU(),
             nn.Dropout(dropout),
         )
         self.pe = HybridPE(hidden_dim)
@@ -487,16 +541,25 @@ class DELPHI(nn.Module):
         self.grid_encoder = GridEncoder(hidden_dim, gh=gh, gw=gw)
 
         # 3. Swin processor (alternating shift)
-        self.swin_blocks = nn.ModuleList([
-            SwinBlock(hidden_dim, n_heads, gh, gw,
-                      dim_ff=hidden_dim * 4, dropout=dropout,
-                      shift=(i % 2))
-            for i in range(n_swin_blocks)
-        ])
+        self.swin_blocks = nn.ModuleList(
+            [
+                SwinBlock(
+                    hidden_dim,
+                    n_heads,
+                    gh,
+                    gw,
+                    dim_ff=hidden_dim * 4,
+                    dropout=dropout,
+                    shift=(i % 2),
+                )
+                for i in range(n_swin_blocks)
+            ]
+        )
 
         # 4. k-NN decoder
-        self.decoder = KNNDecoder(hidden_dim, n_heads=n_heads, K=knn_k,
-                                   gh=gh, gw=gw, dropout=dropout)
+        self.decoder = KNNDecoder(
+            hidden_dim, n_heads=n_heads, K=knn_k, gh=gh, gw=gw, dropout=dropout
+        )
         self.post_norm = nn.LayerNorm(hidden_dim)
 
         # 5. DDPN-inspired Hurdle-Gaussian heads
@@ -505,23 +568,26 @@ class DELPHI(nn.Module):
         # estimate per (spot, gene) in a single forward pass.
         self.head_mu = (
             BLLMuHead(hidden_dim, num_genes, dropout=dropout, prior_std=1.0)
-            if use_bll else _DetMuHead(hidden_dim, num_genes, dropout=dropout)
+            if use_bll
+            else _DetMuHead(hidden_dim, num_genes, dropout=dropout)
         )
         self.head_log_phi = (
             _make_head(hidden_dim, num_genes, "identity", dropout)
-            if use_hetero else _HomoscedasticHead(num_genes)
+            if use_hetero
+            else _HomoscedasticHead(num_genes)
         )
         self.head_pi = (
             _make_head(hidden_dim, num_genes, "sigmoid", dropout)
-            if use_pi else _ZeroPiHead(num_genes)
+            if use_pi
+            else _ZeroPiHead(num_genes)
         )
 
     def forward(
         self,
-        x: torch.Tensor,                              # [N, uni2h_dim]
-        pos: torch.Tensor,                            # [N, 2]
-        edge_index: torch.Tensor | None = None,    # unused, API-compat
-        batch_idx: torch.Tensor | None = None,     # unused (batch_size=1)
+        x: torch.Tensor,  # [N, uni2h_dim]
+        pos: torch.Tensor,  # [N, 2]
+        edge_index: torch.Tensor | None = None,  # unused, API-compat
+        batch_idx: torch.Tensor | None = None,  # unused (batch_size=1)
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # 1. project + PE
         h = self.projector(x)

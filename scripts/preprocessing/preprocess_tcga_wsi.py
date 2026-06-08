@@ -11,6 +11,7 @@ For each SVS file:
 
 Usage: python scripts/preprocess_tcga_wsi.py [--device cuda] [--tile-size 256]
 """
+
 import argparse
 import logging
 import sys
@@ -32,7 +33,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger(__name__)
 
 DEFAULT_SLIDE_DIR = PROJECT_ROOT / "data" / "external" / "tcga_brca" / "slides"
-DEFAULT_SAVE_DIR  = PROJECT_ROOT / "data" / "processed" / "TCGA_BRCA"
+DEFAULT_SAVE_DIR = PROJECT_ROOT / "data" / "processed" / "TCGA_BRCA"
 UNI2H_DIR = PROJECT_ROOT / "data" / "raw" / "uni2-h"
 K_NEIGHBORS = 8
 TISSUE_THRESH = 0.15  # fraction of non-white pixels to count as tissue
@@ -41,6 +42,7 @@ TISSUE_THRESH = 0.15  # fraction of non-white pixels to count as tissue
 def load_uni2h_model(device):
     """Load UNI2-h ViT-giant model (same as preprocess_crc.py)."""
     import timm
+
     try:
         from timm.layers import SwiGLUPacked
     except ImportError:
@@ -52,11 +54,19 @@ def load_uni2h_model(device):
 
     timm_kwargs = {
         "model_name": "vit_giant_patch14_224",
-        "img_size": 224, "patch_size": 14,
-        "depth": 24, "num_heads": 24, "init_values": 1e-5, "embed_dim": 1536,
-        "mlp_ratio": 2.66667 * 2, "num_classes": 0, "no_embed_class": True,
-        "mlp_layer": SwiGLUPacked, "act_layer": torch.nn.SiLU,
-        "reg_tokens": 8, "dynamic_img_size": True,
+        "img_size": 224,
+        "patch_size": 14,
+        "depth": 24,
+        "num_heads": 24,
+        "init_values": 1e-5,
+        "embed_dim": 1536,
+        "mlp_ratio": 2.66667 * 2,
+        "num_classes": 0,
+        "no_embed_class": True,
+        "mlp_layer": SwiGLUPacked,
+        "act_layer": torch.nn.SiLU,
+        "reg_tokens": 8,
+        "dynamic_img_size": True,
     }
     model = timm.create_model(pretrained=False, **timm_kwargs)
     state_dict = torch.load(str(weights_path), map_location="cpu")
@@ -75,6 +85,7 @@ def detect_tissue_tiles(slide, tile_size, thumb_scale=32):
 
     # Otsu threshold
     from skimage.filters import threshold_otsu
+
     try:
         otsu = threshold_otsu(thumb_arr)
     except ValueError:
@@ -101,21 +112,25 @@ def detect_tissue_tiles(slide, tile_size, thumb_scale=32):
     return tiles
 
 
-def extract_features_from_tiles(model, normalize, slide_path, tiles, tile_size,
-                                 device, batch_size=256, n_workers=8):
+def extract_features_from_tiles(
+    model, normalize, slide_path, tiles, tile_size, device, batch_size=256, n_workers=8
+):
     """Extract UNI2-h features with multi-threaded I/O + fp16 inference."""
     from concurrent.futures import ThreadPoolExecutor
 
     import openslide
 
-    resize_transform = transforms.Compose([
-        transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC),
-        transforms.ToTensor(),
-        normalize,
-    ])
+    resize_transform = transforms.Compose(
+        [
+            transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.ToTensor(),
+            normalize,
+        ]
+    )
 
     # Per-worker slide handle for thread-safe reads
     thread_local = __import__("threading").local()
+
     def _get_slide():
         if not hasattr(thread_local, "slide"):
             thread_local.slide = openslide.OpenSlide(slide_path)
@@ -133,7 +148,7 @@ def extract_features_from_tiles(model, normalize, slide_path, tiles, tile_size,
 
     with ThreadPoolExecutor(max_workers=n_workers) as ex:
         for batch_start in range(0, len(tiles), batch_size):
-            batch_tiles = tiles[batch_start:batch_start + batch_size]
+            batch_tiles = tiles[batch_start : batch_start + batch_size]
             results = list(ex.map(_read_tile, batch_tiles))
             patches = [r[0] for r in results]
             coords.extend([r[1] for r in results])
@@ -160,7 +175,7 @@ def process_slide(svs_path, model, normalize, device, tile_size):
     import openslide
 
     name = svs_path.stem
-    log.info(f"\n{'='*50}")
+    log.info(f"\n{'=' * 50}")
     log.info(f"Processing: {name}")
 
     slide = openslide.OpenSlide(str(svs_path))
@@ -214,8 +229,7 @@ def process_slide(svs_path, model, normalize, device, tile_size):
     data.pixel_coords = torch.tensor(coords, dtype=torch.float32)
     data.slide_dims = torch.tensor([w, h], dtype=torch.long)
 
-    log.info(f"  Output: x={data.x.shape}, pos={data.pos.shape}, "
-             f"edges={data.edge_index.shape[1]}")
+    log.info(f"  Output: x={data.x.shape}, pos={data.pos.shape}, edges={data.edge_index.shape[1]}")
     return data
 
 
@@ -223,14 +237,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--tile-size", type=int, default=256)
-    parser.add_argument("--slide-dir", default=str(DEFAULT_SLIDE_DIR),
-                        help="Directory containing SVS files (default: tcga_brca/slides)")
-    parser.add_argument("--save-dir", default=str(DEFAULT_SAVE_DIR),
-                        help="Output directory for .pt files (default: processed/TCGA_BRCA)")
+    parser.add_argument(
+        "--slide-dir",
+        default=str(DEFAULT_SLIDE_DIR),
+        help="Directory containing SVS files (default: tcga_brca/slides)",
+    )
+    parser.add_argument(
+        "--save-dir",
+        default=str(DEFAULT_SAVE_DIR),
+        help="Output directory for .pt files (default: processed/TCGA_BRCA)",
+    )
     args = parser.parse_args()
 
     slide_dir = Path(args.slide_dir)
-    save_dir  = Path(args.save_dir)
+    save_dir = Path(args.save_dir)
 
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     log.info(f"Device: {device}")
@@ -240,8 +260,7 @@ def main():
     svs_files = sorted(slide_dir.glob("*.svs"))
     log.info(f"Found {len(svs_files)} SVS files")
     if not svs_files:
-        log.error(f"No SVS files found in {slide_dir}. "
-                  "Run download_tcga_her2pos.py first.")
+        log.error(f"No SVS files found in {slide_dir}. Run download_tcga_her2pos.py first.")
         return
 
     # Load UNI2-h
@@ -265,7 +284,7 @@ def main():
             processed += 1
 
     # Summary
-    log.info(f"\n{'='*60}")
+    log.info(f"\n{'=' * 60}")
     log.info(f"Processed {processed}/{len(svs_files)} slides → {save_dir}")
     for pt in sorted(save_dir.glob("*.pt")):
         d = torch.load(str(pt), map_location="cpu", weights_only=False)

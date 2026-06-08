@@ -19,6 +19,7 @@ Usage:
   python scripts/finetune.py --dataset prad                 # 28 runs
   python scripts/finetune.py --dataset prad --only MEND140
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,9 +43,9 @@ from src.loss import (  # noqa: E402
 from src.model import DELPHI  # noqa: E402
 from src.utils import align_y_to_panel, per_gene_pcc  # noqa: E402
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s %(levelname)s %(message)s",
-                    datefmt="%H:%M:%S")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"
+)
 log = logging.getLogger(__name__)
 
 NUM_GENES = 785
@@ -81,7 +82,7 @@ def enumerate_loso_folds(ds, dataset):
     if dataset == "cscc":
         pmap = ds.get_patient_indices()
         for patient_id in sorted(pmap.keys()):
-            sib_idx = pmap[patient_id]    # 3 reps of this patient
+            sib_idx = pmap[patient_id]  # 3 reps of this patient
             for held in sib_idx:
                 test_slide_id = Path(ds.file_paths[held]).stem
                 train_idx = [i for i in sib_idx if i != held]
@@ -90,8 +91,7 @@ def enumerate_loso_folds(ds, dataset):
                     continue
                 folds.append((test_slide_id, train_idx, [held]))
     elif dataset == "prad":
-        all_idx = sorted(range(len(ds)),
-                         key=lambda i: ds.file_paths[i])
+        all_idx = sorted(range(len(ds)), key=lambda i: ds.file_paths[i])
         for held in all_idx:
             test_slide_id = Path(ds.file_paths[held]).stem
             train_idx = [i for i in all_idx if i != held]
@@ -101,13 +101,17 @@ def enumerate_loso_folds(ds, dataset):
     return folds
 
 
-def _ft_one_fold(ds, gene_names, train_idx, test_idx, test_slide_id,
-                  device, args, out_dir):
+def _ft_one_fold(ds, gene_names, train_idx, test_idx, test_slide_id, device, args, out_dir):
     """Run a single LOSO fold: reload FULL ckpt → FT on train_idx → eval on test_idx."""
     set_seed(args.seed)
     model = DELPHI(
-        uni2h_dim=1536, hidden_dim=384, num_genes=NUM_GENES,
-        gh=12, gw=12, knn_k=8, n_swin_blocks=4,
+        uni2h_dim=1536,
+        hidden_dim=384,
+        num_genes=NUM_GENES,
+        gh=12,
+        gw=12,
+        knn_k=8,
+        n_swin_blocks=4,
     ).to(device)
     state = torch.load(str(CKPT_FULL), map_location=device)
     model.load_state_dict(state)
@@ -116,8 +120,9 @@ def _ft_one_fold(ds, gene_names, train_idx, test_idx, test_slide_id,
         for n, p in model.named_parameters():
             if not any(k in n for k in ("mu_head", "phi_head", "pi_head", "bll", "head")):
                 p.requires_grad = False
-    opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],
-                            lr=args.lr, weight_decay=1e-4)
+    opt = torch.optim.AdamW(
+        [p for p in model.parameters() if p.requires_grad], lr=args.lr, weight_decay=1e-4
+    )
     # Loss functions are used directly (hurdle_gaussian_nll, pcc_loss_log1p) —
     # no HurdleGaussianLoss wrapper needed here; the loss is composed inline below.
     from src.loss import hurdle_gaussian_nll, pcc_loss_log1p  # noqa: E402
@@ -129,8 +134,9 @@ def _ft_one_fold(ds, gene_names, train_idx, test_idx, test_slide_id,
         for batch in ft_loader:
             batch = batch.to(device)
             opt.zero_grad()
-            out = model(batch.x, batch.pos, batch.edge_index,
-                        batch_idx=getattr(batch, "batch", None))
+            out = model(
+                batch.x, batch.pos, batch.edge_index, batch_idx=getattr(batch, "batch", None)
+            )
             if len(out) == 5:
                 mu, log_phi, pi, _, _ = out
             else:
@@ -161,8 +167,10 @@ def _ft_one_fold(ds, gene_names, train_idx, test_idx, test_slide_id,
             opt.step()
             epoch_loss += float(loss.item())
         if (epoch + 1) % 5 == 0 or epoch == args.epochs - 1:
-            log.info(f"    [{test_slide_id}] epoch {epoch+1}/{args.epochs}  "
-                     f"loss={epoch_loss/max(len(ft_loader),1):.4f}")
+            log.info(
+                f"    [{test_slide_id}] epoch {epoch + 1}/{args.epochs}  "
+                f"loss={epoch_loss / max(len(ft_loader), 1):.4f}"
+            )
 
     # Eval on held-out slide
     model.eval()
@@ -172,8 +180,9 @@ def _ft_one_fold(ds, gene_names, train_idx, test_idx, test_slide_id,
         preds, trues, poss = [], [], []
         for batch in loader:
             batch = batch.to(device)
-            out = model(batch.x, batch.pos, batch.edge_index,
-                        batch_idx=getattr(batch, "batch", None))
+            out = model(
+                batch.x, batch.pos, batch.edge_index, batch_idx=getattr(batch, "batch", None)
+            )
             if len(out) == 5:
                 mu, log_phi, pi, _, _ = out
             else:
@@ -182,8 +191,11 @@ def _ft_one_fold(ds, gene_names, train_idx, test_idx, test_slide_id,
             preds.append(mean_pred.cpu().numpy())
             poss.append(batch.pos.cpu().numpy())
             data = ds[idx]
-            y_native = data.y.cpu().numpy().astype(np.float32) \
-                if getattr(data, "y", None) is not None else None
+            y_native = (
+                data.y.cpu().numpy().astype(np.float32)
+                if getattr(data, "y", None) is not None
+                else None
+            )
             gs = getattr(data, "gene_symbols", None)
             if y_native is not None and gs is not None and y_native.shape[1] != NUM_GENES:
                 y_aligned = align_y_to_panel(y_native, gs, gene_names)
@@ -220,11 +232,17 @@ def main():
     ap.add_argument("--lr", type=float, default=5e-5)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--device", default="cuda")
-    ap.add_argument("--freeze_backbone", action="store_true",
-                    help="freeze G-TNP backbone, only FT heads (more stable on small targets)")
-    ap.add_argument("--only", default=None,
-                    help="run only the fold whose held-out slide_id matches this "
-                         "(useful for parallelizing across multiple GPUs)")
+    ap.add_argument(
+        "--freeze_backbone",
+        action="store_true",
+        help="freeze G-TNP backbone, only FT heads (more stable on small targets)",
+    )
+    ap.add_argument(
+        "--only",
+        default=None,
+        help="run only the fold whose held-out slide_id matches this "
+        "(useful for parallelizing across multiple GPUs)",
+    )
     args = ap.parse_args()
 
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
@@ -250,18 +268,22 @@ def main():
     for i, (test_slide_id, train_idx, test_idx) in enumerate(folds, 1):
         out_path = out_dir / f"delphi_{test_slide_id}.pt"
         if out_path.exists():
-            log.info(f"\n=== fold {i}/{len(folds)}: hold out {test_slide_id} "
-                     f"(skip -- output exists) ===")
+            log.info(
+                f"\n=== fold {i}/{len(folds)}: hold out {test_slide_id} (skip -- output exists) ==="
+            )
             try:
                 d = torch.load(str(out_path), map_location="cpu", weights_only=False)
                 pcc_log.append((test_slide_id, float(d.get("pcc", float("nan")))))
             except Exception:
                 pass
             continue
-        log.info(f"\n=== fold {i}/{len(folds)}: hold out {test_slide_id} "
-                 f"(FT on {len(train_idx)} sister slide(s)) ===")
-        pcc = _ft_one_fold(ds, gene_names, train_idx, test_idx, test_slide_id,
-                            device, args, out_dir)
+        log.info(
+            f"\n=== fold {i}/{len(folds)}: hold out {test_slide_id} "
+            f"(FT on {len(train_idx)} sister slide(s)) ==="
+        )
+        pcc = _ft_one_fold(
+            ds, gene_names, train_idx, test_idx, test_slide_id, device, args, out_dir
+        )
         pcc_log.append((test_slide_id, pcc))
 
     log.info("\n=== LOSO FT summary ===")

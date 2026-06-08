@@ -19,6 +19,7 @@ Usage:
 
 Or set env var HF_TOKEN (recommended for security).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -56,16 +57,26 @@ class Preprocessor:
         print(f">>> Loading UNI2-h from {MODEL_ID}")
         if hf_token:
             from huggingface_hub import login
+
             login(token=hf_token)
 
         import timm
         import timm.layers
+
         timm_kwargs = dict(
-            img_size=224, patch_size=14, depth=24, num_heads=24,
-            init_values=1e-5, embed_dim=1536, mlp_ratio=5.33334,
-            num_classes=0, no_embed_class=True,
-            mlp_layer=timm.layers.SwiGLUPacked, act_layer=torch.nn.SiLU,
-            reg_tokens=8, dynamic_img_size=True,
+            img_size=224,
+            patch_size=14,
+            depth=24,
+            num_heads=24,
+            init_values=1e-5,
+            embed_dim=1536,
+            mlp_ratio=5.33334,
+            num_classes=0,
+            no_embed_class=True,
+            mlp_layer=timm.layers.SwiGLUPacked,
+            act_layer=torch.nn.SiLU,
+            reg_tokens=8,
+            dynamic_img_size=True,
         )
         self.model = timm.create_model(MODEL_ID, pretrained=True, **timm_kwargs).to(self.device)
         self.model.eval()
@@ -75,18 +86,20 @@ class Preprocessor:
             out = self.model(dummy)
         print(f"  UNI2-h loaded. Feature dim: {out.shape[1]}")
 
-        self.transform = transforms.Compose([
-            transforms.Resize(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ])
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize(224),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ]
+        )
 
     def process_image_patches(self, img_path, coords):
         image = Image.open(img_path).convert("RGB")
         w, h = image.size
         patches = []
         crop_size, half = 224, 112
-        for (x, y) in coords:
+        for x, y in coords:
             x, y = int(x), int(y)
             left, upper = x - half, y - half
             if left < 0 or upper < 0 or x + half > w or y + half > h:
@@ -122,7 +135,9 @@ class Preprocessor:
             img_path = os.path.join(self.raw_root, "ST-imgs", sid[0], sid, f"{sid}.jpg")
             if not os.path.exists(meta_path):
                 meta_path = os.path.join(self.raw_root, "ST-spotfiles", f"{sid}_labeled.tsv")
-            if not (os.path.exists(cnts_path) and os.path.exists(meta_path) and os.path.exists(img_path)):
+            if not (
+                os.path.exists(cnts_path) and os.path.exists(meta_path) and os.path.exists(img_path)
+            ):
                 print(f"  Skip {sid}: files missing")
                 continue
             try:
@@ -130,7 +145,10 @@ class Preprocessor:
                 meta_df = pd.read_csv(meta_path, sep="\t")
                 if "x" in meta_df.columns and "y" in meta_df.columns:
                     meta_df.index = (
-                        meta_df["x"].astype(int).astype(str) + "x" + meta_df["y"].astype(int).astype(str))
+                        meta_df["x"].astype(int).astype(str)
+                        + "x"
+                        + meta_df["y"].astype(int).astype(str)
+                    )
                 else:
                     print(f"  {sid}: meta missing x/y")
                     continue
@@ -152,7 +170,7 @@ class Preprocessor:
                 features = []
                 with torch.no_grad():
                     for i in range(0, len(patches), 32):
-                        features.append(self.model(patches[i:i + 32]).cpu())
+                        features.append(self.model(patches[i : i + 32]).cpu())
                 x = torch.cat(features, dim=0)
                 # KNN graph
                 pos = torch.tensor(pixel_coords, dtype=torch.float)
@@ -170,12 +188,16 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="HER2ST preprocessing → UNI2-h PyG Data")
     ap.add_argument("--raw_root", default=str(ROOT / "data/raw/her2st/data"))
     ap.add_argument("--hvg_path", default=str(ROOT / "data/raw/her2st/her_hvg_cut_1000.npy"))
-    ap.add_argument("--save_dir", default=str(ROOT / "data/processed/processed_data_her2st_uni_fixed"))
+    ap.add_argument(
+        "--save_dir", default=str(ROOT / "data/processed/processed_data_her2st_uni_fixed")
+    )
     ap.add_argument("--hf_token", default=os.environ.get("HF_TOKEN", ""))
     args = ap.parse_args()
     print(f"HER2ST preprocessing: {args.raw_root} → {args.save_dir}")
     preprocessor = Preprocessor(
-        raw_root=args.raw_root, save_dir=args.save_dir,
-        hvg_path=args.hvg_path, hf_token=args.hf_token or None,
+        raw_root=args.raw_root,
+        save_dir=args.save_dir,
+        hvg_path=args.hvg_path,
+        hf_token=args.hf_token or None,
     )
     preprocessor.run()

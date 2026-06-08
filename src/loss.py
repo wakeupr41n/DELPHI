@@ -29,6 +29,7 @@ NLL per (spot, gene):
 
 PCC loss: 1 - mean_g Pearson( (1-pi)*mu , y )         in log1p domain.
 """
+
 from __future__ import annotations
 
 import math
@@ -36,18 +37,23 @@ import math
 import torch
 import torch.nn as nn
 
-__all__ = ['HurdleGaussianLoss', 'hurdle_gaussian_mean', 'hurdle_gaussian_nll',
-           'hurdle_gaussian_variance', 'pcc_loss_log1p']
+__all__ = [
+    "HurdleGaussianLoss",
+    "hurdle_gaussian_mean",
+    "hurdle_gaussian_nll",
+    "hurdle_gaussian_variance",
+    "pcc_loss_log1p",
+]
 
 _EPS = 1e-6
 _LOG_2PI = math.log(2.0 * math.pi)
 
 
 def hurdle_gaussian_nll(
-    y: torch.Tensor,           # [N, G] log1p target, y >= 0, exact 0s allowed
-    mu: torch.Tensor,          # [N, G] Gaussian mean, > 0
-    log_phi: torch.Tensor,     # [N, G] log variance, free (DDPN-spirit)
-    pi: torch.Tensor,          # [N, G] zero-inflation prob, in (0,1)
+    y: torch.Tensor,  # [N, G] log1p target, y >= 0, exact 0s allowed
+    mu: torch.Tensor,  # [N, G] Gaussian mean, > 0
+    log_phi: torch.Tensor,  # [N, G] log variance, free (DDPN-spirit)
+    pi: torch.Tensor,  # [N, G] zero-inflation prob, in (0,1)
     zero_threshold: float = 1e-8,
 ) -> torch.Tensor:
     """Per-(spot, gene) NLL under Hurdle-Gaussian. Returns [N, G]."""
@@ -60,11 +66,9 @@ def hurdle_gaussian_nll(
     log_norm = -0.5 * ((y - mu) ** 2 / var + log_var + _LOG_2PI)
 
     # zero branch: -log( pi + (1-pi) * N(0; mu, var) )
-    log_norm_at_0 = -0.5 * (mu ** 2 / var + log_var + _LOG_2PI)
+    log_norm_at_0 = -0.5 * (mu**2 / var + log_var + _LOG_2PI)
     # logsumexp(log_pi, log_1mpi + log_norm_at_0)
-    log_zero_term = torch.logsumexp(
-        torch.stack([log_pi, log_1mpi + log_norm_at_0], dim=0), dim=0
-    )
+    log_zero_term = torch.logsumexp(torch.stack([log_pi, log_1mpi + log_norm_at_0], dim=0), dim=0)
 
     # nonzero branch: -log(1-pi) - log_norm
     log_pos_term = log_1mpi + log_norm
@@ -79,22 +83,27 @@ def hurdle_gaussian_mean(mu: torch.Tensor, pi: torch.Tensor) -> torch.Tensor:
 
 
 def hurdle_gaussian_variance(
-    mu: torch.Tensor, log_phi: torch.Tensor, pi: torch.Tensor,
+    mu: torch.Tensor,
+    log_phi: torch.Tensor,
+    pi: torch.Tensor,
 ) -> torch.Tensor:
     """Var[Y] = (1-pi)*var + pi*(1-pi)*mu^2 (law of total variance)."""
     var = log_phi.exp()
-    return (1.0 - pi) * var + pi * (1.0 - pi) * mu ** 2
+    return (1.0 - pi) * var + pi * (1.0 - pi) * mu**2
 
 
 def pcc_loss_log1p(
-    mu: torch.Tensor, pi: torch.Tensor, y: torch.Tensor, eps: float = 1e-8,
+    mu: torch.Tensor,
+    pi: torch.Tensor,
+    y: torch.Tensor,
+    eps: float = 1e-8,
 ) -> torch.Tensor:
     """1 - mean per-gene Pearson r between (1-pi)*mu and y (both log1p)."""
     pred = (1.0 - pi) * mu
     p = pred - pred.mean(dim=0, keepdim=True)
     t = y - y.mean(dim=0, keepdim=True)
     num = (p * t).sum(dim=0)
-    denom = torch.sqrt((p ** 2).sum(dim=0) * (t ** 2).sum(dim=0) + eps)
+    denom = torch.sqrt((p**2).sum(dim=0) * (t**2).sum(dim=0) + eps)
     pcc_per_gene = num / (denom + eps)
     valid = (denom > eps).float()
     pcc_avg = (pcc_per_gene * valid).sum() / (valid.sum() + eps)

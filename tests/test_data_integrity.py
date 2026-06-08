@@ -3,8 +3,8 @@
 These are smoke tests — they don't load large .pt files,
 just check that critical pipeline inputs are present.
 """
-from pathlib import Path
 
+from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -12,11 +12,9 @@ REPO = Path(__file__).resolve().parent.parent
 def test_checkpoints_present():
     """All 60 LOOCV checkpoints exist."""
     ckpt_dir = REPO / "checkpoints" / "npd_bll_h"
-    her2st_folds = sum(
-        1 for _ in ckpt_dir.glob("loocv_?_s*/best_model_?.pt"))
+    her2st_folds = sum(1 for _ in ckpt_dir.glob("loocv_?_s*/best_model_?.pt"))
     cscc_dir = REPO / "checkpoints" / "npd_cscc756_final"
-    cscc_folds = sum(
-        1 for _ in cscc_dir.glob("loocv_*/best_model_*.pt"))
+    cscc_folds = sum(1 for _ in cscc_dir.glob("loocv_*/best_model_*.pt"))
     assert her2st_folds >= 40, f"Expected >=40 HER2ST ckpts, found {her2st_folds}"
     assert cscc_folds >= 20, f"Expected >=20 cSCC ckpts, found {cscc_folds}"
 
@@ -57,8 +55,7 @@ def test_fig5_cache_present():
 def test_figure_scripts_exist():
     """All figure generation scripts are present."""
     fig_dir = REPO / "scripts" / "figures"
-    main_figs = ["plot_fig2_main.R", "plot_fig3_main.R",
-                 "plot_fig4_main.R", "plot_fig5_main.py"]
+    main_figs = ["plot_fig2_main.R", "plot_fig3_main.R", "plot_fig4_main.R", "plot_fig5_main.py"]
     for f in main_figs:
         assert (fig_dir / f).exists(), f"Missing figure script: {f}"
 

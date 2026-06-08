@@ -9,10 +9,11 @@ def test_model_imports():
     import importlib
 
     modules_to_check = [
-        ("src.model", ["DELPHI", "GridEncoder", "WindowSelfAttn", "SwinBlock",
-                        "BayesianLinear", "BLLMuHead"]),
-        ("src.loss", ["HurdleGaussianLoss", "hurdle_gaussian_mean",
-                       "hurdle_gaussian_variance"]),
+        (
+            "src.model",
+            ["DELPHI", "GridEncoder", "WindowSelfAttn", "SwinBlock", "BayesianLinear", "BLLMuHead"],
+        ),
+        ("src.loss", ["HurdleGaussianLoss", "hurdle_gaussian_mean", "hurdle_gaussian_variance"]),
         ("src.dataset", []),
         ("src.utils", []),
     ]
@@ -35,6 +36,7 @@ def test_loss_function_signature():
         from src.loss import HurdleGaussianLoss
     except ImportError:
         import pytest
+
         pytest.skip("PyTorch not available")
 
     loss_fn = HurdleGaussianLoss(lambda_pcc=3.0)

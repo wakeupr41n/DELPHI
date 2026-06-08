@@ -34,6 +34,7 @@ Notes:
   - The 785 panel was selected on HER2ST so coverage on PRAD is lower than the
     HER2ST/cSCC ~95%; expect ~70-85%.
 """
+
 import argparse
 import json
 import logging
@@ -50,8 +51,7 @@ from torchvision import transforms
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Paths
@@ -79,19 +79,22 @@ def fetch_metadata():
     that the gated repo grants access.
     """
     from huggingface_hub import hf_hub_download
+
     # newest first; v1_3_0 added Visium HD samples in 2026-01
     candidates = ["HEST_v1_3_0.csv", "HEST_v1_2_0.csv", "HEST_v1_1_0.csv"]
     for fname in candidates:
         try:
-            p = hf_hub_download(repo_id=HEST_REPO, filename=fname,
-                                repo_type="dataset", local_dir=str(RAW_DIR))
+            p = hf_hub_download(
+                repo_id=HEST_REPO, filename=fname, repo_type="dataset", local_dir=str(RAW_DIR)
+            )
             logger.info(f"Metadata downloaded: {p}")
             return pd.read_csv(p)
         except Exception as e:
             logger.debug(f"  {fname} not found: {e}")
             continue
-    raise RuntimeError("HEST metadata CSV not found on hub. "
-                       "Check HF_TOKEN and access to MahmoodLab/hest.")
+    raise RuntimeError(
+        "HEST metadata CSV not found on hub. Check HF_TOKEN and access to MahmoodLab/hest."
+    )
 
 
 def select_prad_ids(meta: pd.DataFrame) -> list:
@@ -107,10 +110,10 @@ def select_prad_ids(meta: pd.DataFrame) -> list:
     and NCBI793 (the latter is the only one with oncotree_code='PRAD').
     """
     sub = meta[
-        meta["organ"].astype(str).str.contains("rostate", case=False, na=False) &
-        (meta["disease_state"].astype(str).str.lower() == "cancer") &
-        (meta["preservation_method"].astype(str).str.lower() == "fresh frozen") &
-        meta["st_technology"].astype(str).str.startswith("Visium")
+        meta["organ"].astype(str).str.contains("rostate", case=False, na=False)
+        & (meta["disease_state"].astype(str).str.lower() == "cancer")
+        & (meta["preservation_method"].astype(str).str.lower() == "fresh frozen")
+        & meta["st_technology"].astype(str).str.startswith("Visium")
     ]
     ids = sorted(sub["id"].astype(str).tolist())
     logger.info(f"PRAD FF-Visium samples: {len(ids)} -> {ids}")
@@ -120,14 +123,17 @@ def select_prad_ids(meta: pd.DataFrame) -> list:
 def download_subset(ids: list):
     """snapshot_download with allow_patterns to grab only the chosen IDs."""
     from huggingface_hub import snapshot_download
+
     patterns = []
     for sid in ids:
         # st/<id>.h5ad and wsis/<id>.tif (and any related extension)
         patterns.extend([f"st/{sid}*", f"wsis/{sid}*"])
     logger.info(f"Downloading {len(ids)} PRAD samples ({len(patterns)} patterns)")
     snapshot_download(
-        repo_id=HEST_REPO, repo_type="dataset",
-        allow_patterns=patterns, local_dir=str(RAW_DIR),
+        repo_id=HEST_REPO,
+        repo_type="dataset",
+        allow_patterns=patterns,
+        local_dir=str(RAW_DIR),
     )
     logger.info("Download complete")
 
@@ -139,6 +145,7 @@ def download_subset(ids: list):
 
 def load_uni2h(device):
     import timm
+
     try:
         from timm.layers import SwiGLUPacked
     except ImportError:
@@ -146,17 +153,27 @@ def load_uni2h(device):
     weights = UNI2H_DIR / "pytorch_model.bin"
     if not weights.exists():
         raise FileNotFoundError(f"UNI2-h weights missing: {weights}")
-    kwargs = dict(model_name="vit_giant_patch14_224", img_size=224, patch_size=14,
-                  depth=24, num_heads=24, init_values=1e-5, embed_dim=1536,
-                  mlp_ratio=2.66667 * 2, num_classes=0, no_embed_class=True,
-                  mlp_layer=SwiGLUPacked, act_layer=torch.nn.SiLU,
-                  reg_tokens=8, dynamic_img_size=True)
+    kwargs = dict(
+        model_name="vit_giant_patch14_224",
+        img_size=224,
+        patch_size=14,
+        depth=24,
+        num_heads=24,
+        init_values=1e-5,
+        embed_dim=1536,
+        mlp_ratio=2.66667 * 2,
+        num_classes=0,
+        no_embed_class=True,
+        mlp_layer=SwiGLUPacked,
+        act_layer=torch.nn.SiLU,
+        reg_tokens=8,
+        dynamic_img_size=True,
+    )
     model = timm.create_model(pretrained=False, **kwargs)
     sd = torch.load(str(weights), map_location="cpu")
     model.load_state_dict(sd, strict=False)
     model.to(device).eval()
-    norm = transforms.Normalize(mean=(0.485, 0.456, 0.406),
-                                std=(0.229, 0.224, 0.225))
+    norm = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
     return model, norm
 
 
@@ -170,11 +187,12 @@ def extract_features(model, normalize, slide, coords, device, batch_size=32):
     crop = max(16, int(avg_spacing * 1.5))
     logger.info(f"    avg_spacing={avg_spacing:.1f}px crop={crop}px")
 
-    resize = transforms.Compose([
-        transforms.Resize((224, 224),
-                          interpolation=transforms.InterpolationMode.BICUBIC),
-        transforms.ToTensor(),
-    ])
+    resize = transforms.Compose(
+        [
+            transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.ToTensor(),
+        ]
+    )
 
     features = []
     half = crop // 2
@@ -198,8 +216,7 @@ def extract_features(model, normalize, slide, coords, device, batch_size=32):
 # ---------------------------------------------------------------------------
 
 
-def process_one(sample_id: str, hvg_panel: np.ndarray,
-                model, normalize, device) -> dict | None:
+def process_one(sample_id: str, hvg_panel: np.ndarray, model, normalize, device) -> dict | None:
     import anndata as ad
     import openslide
     from torch_geometric.data import Data
@@ -276,12 +293,17 @@ def process_one(sample_id: str, hvg_panel: np.ndarray,
 
     save_path = SAVE_DIR / f"{sample_id}.pt"
     torch.save(data, save_path)
-    logger.info(f"    saved {save_path.name}  spots={len(coords)} "
-                f"feat={tuple(feats.shape)} cov={coverage:.2%}")
+    logger.info(
+        f"    saved {save_path.name}  spots={len(coords)} "
+        f"feat={tuple(feats.shape)} cov={coverage:.2%}"
+    )
 
-    return {"id": sample_id, "n_spots": int(len(coords)),
-            "gene_coverage": float(coverage),
-            "feat_shape": list(feats.shape)}
+    return {
+        "id": sample_id,
+        "n_spots": int(len(coords)),
+        "gene_coverage": float(coverage),
+        "feat_shape": list(feats.shape),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -292,13 +314,16 @@ def process_one(sample_id: str, hvg_panel: np.ndarray,
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="cuda", type=str)
-    parser.add_argument("--max-samples", type=int, default=None,
-                        help="cap for smoke testing")
-    parser.add_argument("--skip-download", action="store_true",
-                        help="re-use already-downloaded raw files")
-    parser.add_argument("--hf-mirror", action="store_true",
-                        help="route HuggingFace traffic through hf-mirror.com "
-                             "(workaround when huggingface.co is blocked)")
+    parser.add_argument("--max-samples", type=int, default=None, help="cap for smoke testing")
+    parser.add_argument(
+        "--skip-download", action="store_true", help="re-use already-downloaded raw files"
+    )
+    parser.add_argument(
+        "--hf-mirror",
+        action="store_true",
+        help="route HuggingFace traffic through hf-mirror.com "
+        "(workaround when huggingface.co is blocked)",
+    )
     args = parser.parse_args()
 
     if args.hf_mirror and not os.environ.get("HF_ENDPOINT"):

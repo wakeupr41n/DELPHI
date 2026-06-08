@@ -59,13 +59,13 @@ class Her2stDataset(BaseSpatialDataset):
     """
 
     def _scan_files(self):
-        self.file_paths = sorted(glob.glob(os.path.join(self.root_dir, '*.pt')))
+        self.file_paths = sorted(glob.glob(os.path.join(self.root_dir, "*.pt")))
 
     def _load_one_file(self, path: str) -> Data | Batch:
 
-        data_obj = torch.load(path, map_location='cpu', weights_only=False)
+        data_obj = torch.load(path, map_location="cpu", weights_only=False)
 
-        sid = os.path.basename(path).replace('.pt', '')
+        sid = os.path.basename(path).replace(".pt", "")
 
         if isinstance(data_obj, list):
             if len(data_obj) > 0:
@@ -89,16 +89,16 @@ class Her2stDataset(BaseSpatialDataset):
         pm = {}
         for idx, path in enumerate(self.file_paths):
             filename = os.path.basename(path)
-            sid = filename.replace('.pt', '')
+            sid = filename.replace(".pt", "")
 
             # Try to detect patient ID format
-            if '_' in sid:
+            if "_" in sid:
                 # Multi-part filename: extract patient prefix before first '_ST' or '_rep'
-                parts = sid.split('_')
+                parts = sid.split("_")
                 # Find patient part (e.g., 'P2', 'P10')
                 pid = parts[0]
                 for p in parts:
-                    if p.startswith('P') and len(p) > 1 and p[1:].isdigit():
+                    if p.startswith("P") and len(p) > 1 and p[1:].isdigit():
                         pid = p
                         break
             else:

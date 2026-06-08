@@ -2,7 +2,6 @@
 
 import ast
 import pathlib
-import sys
 
 
 def test_src_modules_parse():
@@ -33,6 +32,6 @@ def test_no_broken_scripts_import():
             continue  # syntax errors caught by test_src_modules_parse
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module:
-                assert not node.module.startswith(
-                    "scripts."
-                ), f"{py_file.name} uses absolute scripts import: {node.module}"
+                assert not node.module.startswith("scripts."), (
+                    f"{py_file.name} uses absolute scripts import: {node.module}"
+                )

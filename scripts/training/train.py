@@ -13,6 +13,7 @@ Usage:
   python scripts/train.py --dataset cscc_skinhvg --patient P2 --seed 42 \
       --save_dir checkpoints/npd_bll_cscc/loocv_P2_s42
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,16 +34,16 @@ from src.dataset import Her2stDataset  # noqa: E402
 from src.model import DELPHI  # noqa: E402
 from src.trainer import Trainer  # noqa: E402
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s %(levelname)s %(message)s",
-                    datefmt="%H:%M:%S")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"
+)
 logger = logging.getLogger(__name__)
 
 
 DATASET_DIRS = {
     "her2st": "data/processed/processed_data_her2st_uni_fixed",
     "cscc": "data/processed/cSCC",
-    "cscc756": "data/processed/cSCC_756",   # 756-gene benchmark-aligned panel (LOOCV)
+    "cscc756": "data/processed/cSCC_756",  # 756-gene benchmark-aligned panel (LOOCV)
     "cscc_skinhvg": "data/processed/cSCC_skinHVG",
     "hest_prad": "data/processed/HEST_PRAD",
 }
@@ -57,16 +58,19 @@ def set_seed(seed: int):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset", default="her2st",
-                    choices=list(DATASET_DIRS.keys()))
+    ap.add_argument("--dataset", default="her2st", choices=list(DATASET_DIRS.keys()))
     ap.add_argument("--mode", default="loocv", choices=["loocv", "full"])
-    ap.add_argument("--patient", default=None,
-                    help="(loocv only) held-out patient ID, e.g. A or P2")
+    ap.add_argument(
+        "--patient", default=None, help="(loocv only) held-out patient ID, e.g. A or P2"
+    )
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--save_dir", required=True)
-    ap.add_argument("--pretrain_ckpt", default=None,
-                    help="Warm-start from a pretrained npd checkpoint (e.g. HER2ST FULL); "
-                         "transfers shape-matching tensors, keeps gene-dependent heads fresh.")
+    ap.add_argument(
+        "--pretrain_ckpt",
+        default=None,
+        help="Warm-start from a pretrained npd checkpoint (e.g. HER2ST FULL); "
+        "transfers shape-matching tensors, keeps gene-dependent heads fresh.",
+    )
     ap.add_argument("--epochs", type=int, default=50)
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--lambda_pcc", type=float, default=1.0)
@@ -77,12 +81,19 @@ def main():
     ap.add_argument("--gw", type=int, default=12)
     ap.add_argument("--knn_k", type=int, default=8)
     ap.add_argument("--n_swin_blocks", type=int, default=4)
-    ap.add_argument("--no_bll", action="store_true",
-                    help="Ablation: replace BLL mu head with deterministic Linear")
-    ap.add_argument("--no_hetero", action="store_true",
-                    help="Ablation: homoscedastic noise (per-gene constant log_phi)")
-    ap.add_argument("--no_pi", action="store_true",
-                    help="Ablation: drop zero-inflation -> pure Gaussian NLL")
+    ap.add_argument(
+        "--no_bll",
+        action="store_true",
+        help="Ablation: replace BLL mu head with deterministic Linear",
+    )
+    ap.add_argument(
+        "--no_hetero",
+        action="store_true",
+        help="Ablation: homoscedastic noise (per-gene constant log_phi)",
+    )
+    ap.add_argument(
+        "--no_pi", action="store_true", help="Ablation: drop zero-inflation -> pure Gaussian NLL"
+    )
     args = ap.parse_args()
 
     set_seed(args.seed)
@@ -90,7 +101,7 @@ def main():
     logger.info(f"device={device} seed={args.seed} dataset={args.dataset} mode={args.mode}")
 
     data_dir = ROOT / DATASET_DIRS[args.dataset]
-    ds = Her2stDataset(root_dir=str(data_dir))     # Her2stDataset works for all (handles list/Data)
+    ds = Her2stDataset(root_dir=str(data_dir))  # Her2stDataset works for all (handles list/Data)
     pmap = ds.get_patient_indices()
     logger.info(f"slides: {len(ds)}  patients: {sorted(pmap.keys())}")
 
@@ -102,7 +113,9 @@ def main():
         train_loader = DataLoader(Subset(ds, train_idx), batch_size=1, shuffle=True)
         val_loader = DataLoader(Subset(ds, val_idx), batch_size=1, shuffle=False)
         fold_id = args.patient
-        logger.info(f"LOOCV held-out {args.patient}: train={len(train_idx)} val={len(val_idx)} slides")
+        logger.info(
+            f"LOOCV held-out {args.patient}: train={len(train_idx)} val={len(val_idx)} slides"
+        )
     else:  # full
         train_loader = DataLoader(ds, batch_size=1, shuffle=True)
         val_loader = None
@@ -114,14 +127,19 @@ def main():
     logger.info(f"num_genes={num_genes}  uni_dim={uni_dim}")
 
     model = DELPHI(
-        uni2h_dim=uni_dim, hidden_dim=args.hidden_dim, num_genes=num_genes,
-        gh=args.gh, gw=args.gw, knn_k=args.knn_k,
+        uni2h_dim=uni_dim,
+        hidden_dim=args.hidden_dim,
+        num_genes=num_genes,
+        gh=args.gh,
+        gw=args.gw,
+        knn_k=args.knn_k,
         n_swin_blocks=args.n_swin_blocks,
-        use_bll=not args.no_bll, use_hetero=not args.no_hetero,
+        use_bll=not args.no_bll,
+        use_hetero=not args.no_hetero,
         use_pi=not args.no_pi,
     )
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    logger.info(f"model params: {n_params/1e6:.2f} M")
+    logger.info(f"model params: {n_params / 1e6:.2f} M")
 
     # Optional warm-start from a pretrained (e.g. HER2ST FULL) npd checkpoint:
     # transfer every parameter whose shape matches (backbone + head bodies);
@@ -140,15 +158,20 @@ def main():
             else:
                 skipped += 1
         model.load_state_dict(msd)
-        logger.info(f"warm-start from {args.pretrain_ckpt}: transferred {transferred} "
-                    f"tensors, {skipped} kept fresh (gene-dependent heads)")
+        logger.info(
+            f"warm-start from {args.pretrain_ckpt}: transferred {transferred} "
+            f"tensors, {skipped} kept fresh (gene-dependent heads)"
+        )
 
     config = {
         "experiment": {"save_dir": args.save_dir},
         "train": {
-            "lr": args.lr, "weight_decay": 1e-4,
-            "epochs": args.epochs, "warmup_epochs": 5,
-            "grad_clip": 1.0, "val_every": 1 if val_loader else 999,
+            "lr": args.lr,
+            "weight_decay": 1e-4,
+            "epochs": args.epochs,
+            "warmup_epochs": 5,
+            "grad_clip": 1.0,
+            "val_every": 1 if val_loader else 999,
         },
         "loss": {
             "lambda_pcc": args.lambda_pcc,

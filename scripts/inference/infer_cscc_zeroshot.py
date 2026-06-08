@@ -10,6 +10,7 @@ Output: results/hetosgebench/predictions_full/cscc_zs/delphi_{P2,P5,P9,P10}.pt
 Usage:
   python scripts/infer_cscc_zeroshot.py
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,16 +31,16 @@ from src.loss import hurdle_gaussian_mean, hurdle_gaussian_variance  # noqa: E40
 from src.model import DELPHI  # noqa: E402
 from src.utils import align_y_to_panel, per_gene_pcc  # noqa: E402
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s %(levelname)s %(message)s",
-                    datefmt="%H:%M:%S")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"
+)
 log = logging.getLogger(__name__)
 
 CSCC_DIR = ROOT / "data" / "processed" / "cSCC"
 HER2_PANEL = ROOT / "data" / "processed" / "gene_names_785.npy"
 OUT_DIR = ROOT / "results" / "hetosgebench" / "predictions_full" / "cscc_zs"
 CKPTS = [
-    ROOT / "checkpoints" / "npd_bll_h" / "full_s42_e22"   / "final_model_FULL.pt",
+    ROOT / "checkpoints" / "npd_bll_h" / "full_s42_e22" / "final_model_FULL.pt",
     ROOT / "checkpoints" / "npd_bll_h" / "full_s3047_e22" / "final_model_FULL.pt",
 ]
 NUM_GENES = 785
@@ -52,8 +53,13 @@ def load_ensemble(device):
             log.warning(f"missing ckpt: {ckpt}")
             continue
         model = DELPHI(
-            uni2h_dim=1536, hidden_dim=384, num_genes=NUM_GENES,
-            gh=12, gw=12, knn_k=8, n_swin_blocks=4,
+            uni2h_dim=1536,
+            hidden_dim=384,
+            num_genes=NUM_GENES,
+            gh=12,
+            gw=12,
+            knn_k=8,
+            n_swin_blocks=4,
         ).to(device)
         state = torch.load(str(ckpt), map_location=device)
         model.load_state_dict(state)
@@ -70,8 +76,7 @@ def forward_ensemble(models, batch):
     """Mean-ensemble forward returning (mu_pred, log_phi, pi, sigma_total)."""
     accum = None
     for m in models:
-        out = m(batch.x, batch.pos, batch.edge_index,
-                batch_idx=getattr(batch, "batch", None))
+        out = m(batch.x, batch.pos, batch.edge_index, batch_idx=getattr(batch, "batch", None))
         if len(out) == 5:
             mu, log_phi, pi, _, epist_var = out
         else:
@@ -80,7 +85,7 @@ def forward_ensemble(models, batch):
         mean_pred = hurdle_gaussian_mean(mu, pi)
         sigma_al = torch.sqrt(hurdle_gaussian_variance(mu, log_phi, pi) + 1e-8)
         sigma_ep = torch.sqrt(epist_var + 1e-8)
-        sigma_tot = torch.sqrt(sigma_al ** 2 + sigma_ep ** 2 + 1e-8)
+        sigma_tot = torch.sqrt(sigma_al**2 + sigma_ep**2 + 1e-8)
         if accum is None:
             accum = {
                 "pred": mean_pred.cpu().numpy(),
@@ -133,7 +138,7 @@ def main():
         mus, lps, pis, sas, ses, sts = [], [], [], [], [], []
         for batch in loader:
             batch = batch.to(device)
-            data = ds[idx_list[len(preds)]]   # local file for gene_symbols
+            data = ds[idx_list[len(preds)]]  # local file for gene_symbols
             acc = forward_ensemble(models, batch)
             preds.append(acc["pred"])
             mus.append(acc["mu"])
@@ -142,14 +147,16 @@ def main():
             sas.append(acc["sigma_al"])
             ses.append(acc["sigma_ep"])
             sts.append(acc["sigma_total"])
-            y_native = data.y.cpu().numpy().astype(np.float32) \
-                if getattr(data, "y", None) is not None else None
+            y_native = (
+                data.y.cpu().numpy().astype(np.float32)
+                if getattr(data, "y", None) is not None
+                else None
+            )
             gs = getattr(data, "gene_symbols", None)
             if y_native is not None and gs is not None:
                 y_aligned = align_y_to_panel(y_native, gs, gene_names)
             else:
-                y_aligned = np.full((acc["pred"].shape[0], NUM_GENES),
-                                     np.nan, dtype=np.float32)
+                y_aligned = np.full((acc["pred"].shape[0], NUM_GENES), np.nan, dtype=np.float32)
             trues.append(y_aligned)
             poss.append(batch.pos.cpu().numpy())
 

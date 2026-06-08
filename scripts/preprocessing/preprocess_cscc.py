@@ -13,6 +13,7 @@ Data format: Old ST (TSV count matrices + JPG H&E + spot selection files)
 
 Usage: python scripts/preprocess_cscc.py
 """
+
 import glob
 import logging
 import sys
@@ -31,7 +32,7 @@ Image.MAX_IMAGE_PIXELS = None  # cSCC H&E images are very large WSIs (~250M pixe
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 RAW_DIR = PROJECT_ROOT / "data" / "raw" / "cSCC"
@@ -46,6 +47,7 @@ SAVE_DIR.mkdir(parents=True, exist_ok=True)
 def load_uni2h_model(device):
     """Load UNI2-h vision foundation model."""
     import timm
+
     try:
         from timm.layers import SwiGLUPacked
     except ImportError:
@@ -56,12 +58,20 @@ def load_uni2h_model(device):
         raise FileNotFoundError(f"UNI2-h weights not found at {weights_path}")
 
     timm_kwargs = {
-        'model_name': 'vit_giant_patch14_224',
-        'img_size': 224, 'patch_size': 14,
-        'depth': 24, 'num_heads': 24, 'init_values': 1e-5, 'embed_dim': 1536,
-        'mlp_ratio': 2.66667 * 2, 'num_classes': 0, 'no_embed_class': True,
-        'mlp_layer': SwiGLUPacked, 'act_layer': torch.nn.SiLU,
-        'reg_tokens': 8, 'dynamic_img_size': True,
+        "model_name": "vit_giant_patch14_224",
+        "img_size": 224,
+        "patch_size": 14,
+        "depth": 24,
+        "num_heads": 24,
+        "init_values": 1e-5,
+        "embed_dim": 1536,
+        "mlp_ratio": 2.66667 * 2,
+        "num_classes": 0,
+        "no_embed_class": True,
+        "mlp_layer": SwiGLUPacked,
+        "act_layer": torch.nn.SiLU,
+        "reg_tokens": 8,
+        "dynamic_img_size": True,
     }
     model = timm.create_model(pretrained=False, **timm_kwargs)
     state_dict = torch.load(str(weights_path), map_location="cpu")
@@ -80,23 +90,25 @@ def extract_features(model, normalize, image, coords, device, batch_size=32):
     crop_size = max(16, int(avg_spacing * 1.5))
     logger.info(f"    Dynamic zoom: avg_spacing={avg_spacing:.1f}px, crop_size={crop_size}px")
 
-    resize_transform = transforms.Compose([
-        transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC),
-        transforms.ToTensor(),
-        normalize,
-    ])
+    resize_transform = transforms.Compose(
+        [
+            transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.ToTensor(),
+            normalize,
+        ]
+    )
 
     patches = []
     half = crop_size // 2
     w, h = image.size
 
-    for (x, y) in coords:
+    for x, y in coords:
         x, y = int(x), int(y)
         left, upper = x - half, y - half
         right, lower = x + half, y + half
 
         if left < 0 or upper < 0 or right > w or lower > h:
-            padded = Image.new('RGB', (crop_size, crop_size), (255, 255, 255))
+            padded = Image.new("RGB", (crop_size, crop_size), (255, 255, 255))
             c_left, c_upper = max(0, left), max(0, upper)
             c_right, c_lower = min(w, right), min(h, lower)
             crop = image.crop((c_left, c_upper, c_right, c_lower))
@@ -110,7 +122,7 @@ def extract_features(model, normalize, image, coords, device, batch_size=32):
     features = []
     with torch.no_grad():
         for i in range(0, len(patches_tensor), batch_size):
-            batch = patches_tensor[i:i + batch_size]
+            batch = patches_tensor[i : i + batch_size]
             features.append(model(batch).cpu())
 
     return torch.cat(features, dim=0)
@@ -118,29 +130,29 @@ def extract_features(model, normalize, image, coords, device, batch_size=32):
 
 def process_sample(stdata_path, spots_path, img_path, target_genes, model, normalize, device):
     """Process a single cSCC ST sample."""
-    sample_name = Path(stdata_path).stem.replace('_stdata', '')
+    sample_name = Path(stdata_path).stem.replace("_stdata", "")
     # Extract patient and rep info from filename (e.g., GSM4284316_P2_ST_rep1)
-    parts = sample_name.split('_')
+    parts = sample_name.split("_")
     patient_id = None
     for p in parts:
-        if p.startswith('P') and p[1:].isdigit():
+        if p.startswith("P") and p[1:].isdigit():
             patient_id = p
             break
-    sid = '_'.join([p for p in parts if p.startswith('P') or p.startswith('rep') or p == 'ST'])
+    sid = "_".join([p for p in parts if p.startswith("P") or p.startswith("rep") or p == "ST"])
     logger.info(f"\n  Processing {sid} (patient={patient_id})...")
 
     # 1. Load count data
-    stdata = pd.read_csv(stdata_path, sep='\t', index_col=0)
+    stdata = pd.read_csv(stdata_path, sep="\t", index_col=0)
     logger.info(f"    Raw data: {stdata.shape[0]} spots x {stdata.shape[1]} genes")
 
     # 2. Load spot coordinates
-    spots = pd.read_csv(spots_path, sep='\t')
+    spots = pd.read_csv(spots_path, sep="\t")
     # spots has columns: x, y, new_x, new_y, pixel_x, pixel_y
     # Index format: AxB array coordinates → need to map to stdata index
     # Create spot ID from x,y (array coords match stdata index format "AxB")
     spot_ids = [f"{int(row['x'])}x{int(row['y'])}" for _, row in spots.iterrows()]
-    spots['spot_id'] = spot_ids
-    pixel_coords = spots[['pixel_x', 'pixel_y']].values
+    spots["spot_id"] = spot_ids
+    pixel_coords = spots[["pixel_x", "pixel_y"]].values
 
     # 3. Match spots between stdata and spot selection
     common = set(stdata.index) & set(spot_ids)
@@ -150,10 +162,10 @@ def process_sample(stdata_path, spots_path, img_path, target_genes, model, norma
     logger.info(f"    Common spots: {len(common)}")
 
     # Filter and align
-    spots_filtered = spots[spots['spot_id'].isin(common)].set_index('spot_id')
+    spots_filtered = spots[spots["spot_id"].isin(common)].set_index("spot_id")
     common_ordered = [s for s in stdata.index if s in common]
     stdata_filtered = stdata.loc[common_ordered]
-    pixel_coords = spots_filtered.loc[common_ordered, ['pixel_x', 'pixel_y']].values
+    pixel_coords = spots_filtered.loc[common_ordered, ["pixel_x", "pixel_y"]].values
 
     # 4. Gene intersection with HER2ST HVG
     overlap_genes = sorted(set(stdata_filtered.columns) & set(target_genes))
@@ -172,7 +184,7 @@ def process_sample(stdata_path, spots_path, img_path, target_genes, model, norma
     logger.info(f"    After normalization: {expr.shape}")
 
     # 6. Extract UNI2-h features
-    image = Image.open(img_path).convert('RGB')
+    image = Image.open(img_path).convert("RGB")
     logger.info(f"    Image size: {image.size}")
     features = extract_features(model, normalize, image, pixel_coords, device)
 
@@ -208,7 +220,7 @@ def process_sample(stdata_path, spots_path, img_path, target_genes, model, norma
 
 
 def main():
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info(f"Device: {device}")
 
     # Load target genes
@@ -225,46 +237,59 @@ def main():
 
     processed = 0
     for stdata_path in stdata_files:
-        base = Path(stdata_path).stem.replace('_stdata', '')
+        base = Path(stdata_path).stem.replace("_stdata", "")
         # Find matching files
-        spots_candidates = glob.glob(str(RAW_DIR / f"*spot_data-selection-{base.split('_', 1)[1]}*"))
+        spots_candidates = glob.glob(
+            str(RAW_DIR / f"*spot_data-selection-{base.split('_', 1)[1]}*")
+        )
         img_candidates = glob.glob(str(RAW_DIR / f"{base}.jpg"))
 
         if not spots_candidates:
             # Try alternative naming
-            parts = base.split('_')
-            sample_part = '_'.join(parts[1:])  # Remove GSM prefix
+            parts = base.split("_")
+            sample_part = "_".join(parts[1:])  # Remove GSM prefix
             spots_candidates = glob.glob(str(RAW_DIR / f"*spot*{sample_part}*"))
         if not img_candidates:
             img_candidates = glob.glob(str(RAW_DIR / f"{base}*.jpg"))
 
         if not spots_candidates or not img_candidates:
-            logger.warning(f"  Missing files for {base}: spots={len(spots_candidates)}, img={len(img_candidates)}")
+            logger.warning(
+                f"  Missing files for {base}: spots={len(spots_candidates)}, img={len(img_candidates)}"
+            )
             continue
 
-        data = process_sample(stdata_path, spots_candidates[0], img_candidates[0],
-                            target_genes, model, normalize, device)
+        data = process_sample(
+            stdata_path,
+            spots_candidates[0],
+            img_candidates[0],
+            target_genes,
+            model,
+            normalize,
+            device,
+        )
         if data is not None:
             save_path = SAVE_DIR / f"{data.sid}.pt"
             torch.save(data, str(save_path))
-            logger.info(f"    Saved: {save_path} ({data.x.shape[0]} spots, {data.y.shape[1]} genes)")
+            logger.info(
+                f"    Saved: {save_path} ({data.x.shape[0]} spots, {data.y.shape[1]} genes)"
+            )
             processed += 1
 
-    logger.info(f"\n{'='*60}")
+    logger.info(f"\n{'=' * 60}")
     logger.info(f"Processed {processed}/{len(stdata_files)} samples -> {SAVE_DIR}")
 
     # Summary
     pt_files = sorted(SAVE_DIR.glob("*.pt"))
     if pt_files:
-        sample = torch.load(str(pt_files[0]), map_location='cpu', weights_only=False)
+        sample = torch.load(str(pt_files[0]), map_location="cpu", weights_only=False)
         logger.info(f"Gene count: {sample.y.shape[1]}")
         patients = set()
         for f in pt_files:
-            d = torch.load(str(f), map_location='cpu', weights_only=False)
+            d = torch.load(str(f), map_location="cpu", weights_only=False)
             patients.add(d.patient_id)
         logger.info(f"Patients: {sorted(patients)} ({len(patients)} total)")
         logger.info(f"Slides: {len(pt_files)} total")
-    logger.info(f"{'='*60}")
+    logger.info(f"{'=' * 60}")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ Usage:
       --ckpt checkpoints/npd_bll_h/full_s42/final_model_FULL.pt \
       --out  results/hetosgebench/predictions_npd_zs/cscc/delphi_ALL.pt
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,8 +31,9 @@ from src.dataset import Her2stDataset  # noqa: E402
 from src.loss import hurdle_gaussian_mean, hurdle_gaussian_variance  # noqa: E402
 from src.model import DELPHI  # noqa: E402
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
-                    datefmt="%H:%M:%S")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -46,9 +48,9 @@ DATASET_DIRS = {
 
 GENE_FILES = {
     "her2st": "data/raw/her2st/her_hvg_cut_1000.npy",
-    "cscc": "data/raw/her2st/her_hvg_cut_1000.npy",     # 773 of 785 -- pad-to-785 fine
-    "cscc756": None,                                       # use gene_symbols from .pt (756 benchmark panel)
-    "cscc_skinhvg": None,                                  # use gene_symbols from .pt
+    "cscc": "data/raw/her2st/her_hvg_cut_1000.npy",  # 773 of 785 -- pad-to-785 fine
+    "cscc756": None,  # use gene_symbols from .pt (756 benchmark panel)
+    "cscc_skinhvg": None,  # use gene_symbols from .pt
     "hest_prad": "data/raw/her2st/her_hvg_cut_1000.npy",
     "tcga_her2pos": "data/raw/her2st/her_hvg_cut_1000.npy",
 }
@@ -57,12 +59,16 @@ GENE_FILES = {
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", required=True, choices=list(DATASET_DIRS.keys()))
-    ap.add_argument("--patient", default="ALL",
-                    help="Patient ID to infer; 'ALL' = all patients in dataset")
+    ap.add_argument(
+        "--patient", default="ALL", help="Patient ID to infer; 'ALL' = all patients in dataset"
+    )
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--per_patient", action="store_true",
-                    help="Save one .pt per patient instead of one merged file (use for ZS / TCGA)")
+    ap.add_argument(
+        "--per_patient",
+        action="store_true",
+        help="Save one .pt per patient instead of one merged file (use for ZS / TCGA)",
+    )
     ap.add_argument("--hidden_dim", type=int, default=384)
     ap.add_argument("--gh", type=int, default=12)
     ap.add_argument("--gw", type=int, default=12)
@@ -88,8 +94,12 @@ def main():
     logger.info(f"dataset={args.dataset} patients={target_ids} num_genes={num_genes}")
 
     model = DELPHI(
-        uni2h_dim=uni_dim, hidden_dim=args.hidden_dim, num_genes=num_genes,
-        gh=args.gh, gw=args.gw, knn_k=args.knn_k,
+        uni2h_dim=uni_dim,
+        hidden_dim=args.hidden_dim,
+        num_genes=num_genes,
+        gh=args.gh,
+        gw=args.gw,
+        knn_k=args.knn_k,
         n_swin_blocks=args.n_swin_blocks,
     ).to(device)
     state = torch.load(args.ckpt, map_location=device)
@@ -107,7 +117,9 @@ def main():
     if gene_names is None:
         gene_names = [f"gene_{i}" for i in range(num_genes)]
     if len(gene_names) != num_genes:
-        logger.warning(f"gene_names len {len(gene_names)} != num_genes {num_genes}; padding/truncating")
+        logger.warning(
+            f"gene_names len {len(gene_names)} != num_genes {num_genes}; padding/truncating"
+        )
         gene_names = (list(gene_names) + [f"gene_{i}" for i in range(num_genes)])[:num_genes]
 
     out_root = Path(args.out)
@@ -129,8 +141,9 @@ def main():
             mus, log_phis, pis, sas, ses, sts = [], [], [], [], [], []
             for batch in loader:
                 batch = batch.to(device)
-                out = model(batch.x, batch.pos, batch.edge_index,
-                            batch_idx=getattr(batch, "batch", None))
+                out = model(
+                    batch.x, batch.pos, batch.edge_index, batch_idx=getattr(batch, "batch", None)
+                )
                 if len(out) == 5:
                     mu, log_phi, pi, _, epist_var = out
                 else:
@@ -139,10 +152,13 @@ def main():
                 mean_pred = hurdle_gaussian_mean(mu, pi)
                 sigma_al = torch.sqrt(hurdle_gaussian_variance(mu, log_phi, pi) + 1e-8)
                 sigma_ep = torch.sqrt(epist_var + 1e-8)
-                sigma_tot = torch.sqrt(sigma_al ** 2 + sigma_ep ** 2 + 1e-8)
+                sigma_tot = torch.sqrt(sigma_al**2 + sigma_ep**2 + 1e-8)
                 preds.append(mean_pred.cpu().numpy())
-                trues.append(batch.y.cpu().numpy() if getattr(batch, "y", None) is not None
-                             else np.zeros_like(mean_pred.cpu().numpy()))
+                trues.append(
+                    batch.y.cpu().numpy()
+                    if getattr(batch, "y", None) is not None
+                    else np.zeros_like(mean_pred.cpu().numpy())
+                )
                 poss.append(batch.pos.cpu().numpy())
                 mus.append(mu.cpu().numpy())
                 log_phis.append(log_phi.cpu().numpy())
@@ -181,7 +197,8 @@ def main():
                 "sigma_aleatoric": torch.from_numpy(sa_a).float(),
                 "sigma_epistemic": torch.from_numpy(se_a).float(),
                 "sigma_total": torch.from_numpy(st_a).float(),
-                "pcc": pcc_mean, "n_spots": pred.shape[0],
+                "pcc": pcc_mean,
+                "n_spots": pred.shape[0],
             }
             if args.per_patient:
                 pp = out_root / f"delphi_{pid}.pt"
